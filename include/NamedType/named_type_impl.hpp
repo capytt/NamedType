@@ -72,7 +72,7 @@ public:
     {
     }
 
-    template <typename... Args>
+    template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
     explicit constexpr NamedType(Args&&... args) noexcept(std::is_nothrow_move_constructible<T>::value)
       : value_(std::forward<Args>(args)...)
     {
