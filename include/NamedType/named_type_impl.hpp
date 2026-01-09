@@ -69,13 +69,13 @@ public:
     // constructor
     NamedType()  = default;
 
-    explicit constexpr NamedType(T const& value) noexcept(std::is_nothrow_copy_constructible<T>::value) : value_(value)
+    explicit constexpr NamedType(T const& value) noexcept(std::is_nothrow_copy_constructible<T>::value) : value_{value}
     {
     }
 
     template <typename T_ = T, typename = IsNotReference<T_>>
     explicit constexpr NamedType(T&& value) noexcept(std::is_nothrow_move_constructible<T>::value)
-        : value_(std::move(value))
+        : value_{std::move(value)}
     {
     }
 
