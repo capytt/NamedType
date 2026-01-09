@@ -1,6 +1,7 @@
 #ifndef named_type_impl_h
 #define named_type_impl_h
 
+#include <concepts>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -53,6 +54,12 @@ namespace fluent
 template <typename T>
 using IsNotReference = typename std::enable_if<!std::is_reference<T>::value, void>::type;
 
+// Brace initialization T{args...} is ill-formed if narrowing.
+// See https://en.cppreference.com/w/cpp/language/aggregate_initialization.html
+// "If that initializer is of syntax (1), and a narrowing conversion is required to convert the expression, the program is ill-formed."
+template <typename T, typename... Args>
+concept NonNarrowingConstructible = requires { T{std::declval<Args>()...}; };
+
 template <typename T, typename Parameter, template <typename> class... Skills>
 class FLUENT_EBCO NamedType : public Skills<NamedType<T, Parameter, Skills...>>...
 {
@@ -72,9 +79,16 @@ public:
     {
     }
 
-    template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
-    explicit constexpr NamedType(Args&&... args) noexcept(std::is_nothrow_move_constructible<T>::value)
-      : value_(std::forward<Args>(args)...)
+    // Forwarding constructor for multi-arg construction or single-arg conversion.
+    // Requires:
+    //   1. Either 2+ args, OR 1 arg of a type different from T (avoids ambiguity with copy/move ctors)
+    //   2. NonNarrowingConstructible: rejects narrowing conversions (e.g. uint64_t -> uint32_t)
+    //      by checking if brace-init T{args...} is well-formed
+    template <typename... Args>
+      requires (sizeof...(Args) > 1 || (sizeof...(Args) == 1 && !std::is_same_v<std::decay_t<Args>..., T>))
+            && NonNarrowingConstructible<T, Args...>
+    explicit constexpr NamedType(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args...>)
+      : value_{std::forward<Args>(args)...}
     {
     }
 
@@ -106,7 +120,9 @@ public:
 
            IGNORE_SHOULD_RETURN_REFERENCE_TO_THIS_END
        }
+        // Rejects narrowing conversions (e.g. uint64_t -> uint32_t)
         template <typename U>
+          requires NonNarrowingConstructible<T, U>
         NamedType operator=(U&& value) const
         {
             IGNORE_SHOULD_RETURN_REFERENCE_TO_THIS_BEGIN
@@ -127,32 +143,6 @@ private:
     T value_;
 };
 
-template <template <typename T> class StrongType, typename T>
-constexpr StrongType<T> make_named(T const& value)
-{
-    return StrongType<T>(value);
-}
-
-namespace details {
-template <class F, class... Ts>
-struct AnyOrderCallable{
-   F f;
-   template <class... Us>
-   auto operator()(Us&&...args) const
-   {
-       static_assert(sizeof...(Ts) == sizeof...(Us), "Passing wrong number of arguments");
-       auto x = std::make_tuple(std::forward<Us>(args)...);
-       return f(std::move(std::get<Ts>(x))...);
-   }
-};
-} //namespace details
-
-// EXPERIMENTAL - CAN BE CHANGED IN THE FUTURE. FEEDBACK WELCOME FOR IMPROVEMENTS!
-template <class... Args, class F>
-auto make_named_arg_function(F&& f)
-{
-   return details::AnyOrderCallable<F, Args...>{std::forward<F>(f)};
-}
 } // namespace fluent
 
 #endif /* named_type_impl_h */
