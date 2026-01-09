@@ -60,16 +60,6 @@ using IsNotReference = typename std::enable_if<!std::is_reference<T>::value, voi
 template <typename T, typename... Args>
 concept NonNarrowingConstructible = requires { T{std::declval<Args>()...}; };
 
-// Safe integer-to-floating-point conversion: integers <= 32 bits fit exactly in double's 53-bit mantissa.
-// The C++ standard treats int->float as narrowing for non-constant expressions, but this is overly
-// conservative for small integers to double.
-template <typename From, typename To>
-concept SafeIntToFloat =
-    std::is_integral_v<std::remove_cvref_t<From>> &&
-    std::is_floating_point_v<std::remove_cvref_t<To>> &&
-    sizeof(std::remove_cvref_t<From>) <= 4 &&
-    sizeof(std::remove_cvref_t<To>) >= 8;
-
 template <typename T, typename Parameter, template <typename> class... Skills>
 class FLUENT_EBCO NamedType : public Skills<NamedType<T, Parameter, Skills...>>...
 {
@@ -99,16 +89,6 @@ public:
             && NonNarrowingConstructible<T, Args...>
     explicit constexpr NamedType(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args...>)
       : value_{std::forward<Args>(args)...}
-    {
-    }
-
-    // Safe int-to-float constructor: allows small integers (<=32 bit) to construct floating-point T.
-    // Uses parentheses init to bypass brace-init narrowing rules which are overly strict for this case.
-    template <typename Arg>
-      requires SafeIntToFloat<Arg, T>
-            && (!NonNarrowingConstructible<T, Arg>)
-    explicit constexpr NamedType(Arg&& arg) noexcept(std::is_nothrow_constructible_v<T, Arg>)
-      : value_(std::forward<Arg>(arg))
     {
     }
 
